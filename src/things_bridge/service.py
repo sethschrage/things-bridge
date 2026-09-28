@@ -47,6 +47,9 @@ GUARD_FIELDS = frozenset({"when", "deadline", "completed", "canceled"})
 GUARD_LISTS = ("inbox", "today", "anytime", "someday", "upcoming")
 # SCAN errors the item-by-item slow path can't fix (environment, dialog, dictionary)
 _NO_SLOW_PATH = frozenset({-609, -1719, -128, -2740, -2741, -1708, -10814})
+# Off macOS nothing can be looked up, and ID_RE also matches one-word titles ("Groceries"). Only values shaped like
+# real Things ids (21/22-char base62, or a UUID) count as ids there; anything else may be a title (§5.5).
+_OFFLINE_ID_RE = re.compile(r"^(?:[A-Za-z0-9]{20,24}|[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})$")
 
 ENV_NO_LAUNCH = "THINGS_BRIDGE_NO_LAUNCH"
 ENV_READ_ONLY = "THINGS_BRIDGE_READ_ONLY"
@@ -900,17 +903,19 @@ class ThingsService:
         """Hold the write lock (not for dry runs) for validation reads, guards, dispatch and verification, so the
         checks still hold when the URL goes out. A dry run off macOS skips every validation read (§5.5)."""
         _flag("dry_run", dry_run)
+        offline = False
+        try:
+            self.runner.require_macos()             # before the lock: off macOS no state file is created
+        except NotMacOS:
+            if not dry_run:
+                raise
+            offline = True
         with nullcontext() if dry_run else self.runner.write_lock():
             ctx = _Call(self)
-            if dry_run:
-                try:
-                    self.runner.require_macos()
-                except NotMacOS:
-                    ctx.offline = True
-                    ctx.warn(OFFLINE_WARNING)
+            if offline:
+                ctx.offline = True
+                ctx.warn(OFFLINE_WARNING)
             else:
-                self.runner.require_macos()
-            if not ctx.offline:
                 ctx.launched = self.runner.ensure_running(allow_launch=self.config.allow_launch)
             yield ctx
 
@@ -1008,7 +1013,7 @@ class ThingsService:
                          if getattr(spec, k) is not None}
                 if kind == "heading":
                     if extra:
-                        raise _fail(sorted(extra)[0], "a heading only has a title")
+                        raise _fail(min(extra), "a heading only has a title")
                     return v
                 if spec.notes:
                     v["notes"] = urlscheme.check_notes("notes", spec.notes)
@@ -1121,9 +1126,11 @@ class ThingsService:
             raise _fail("project", "give either a project or an area")
         kind: Literal["project", "area"] = "project" if project is not None else "area"
         value = urlscheme.check_title(kind, project if project is not None else area).strip()
-        if urlscheme.ID_RE.fullmatch(value):
-            if ctx.offline:
+        if ctx.offline:
+            if _OFFLINE_ID_RE.fullmatch(value):
                 return _Container(kind, value, "", None)
+            self.runner.require_macos()             # a title needs a read: NotMacOS (§5.5)
+        if urlscheme.ID_RE.fullmatch(value):
             items, areas, _ = self._rows([value], notes="none")
             if value in items:
                 it = items[value]
@@ -1134,8 +1141,6 @@ class ThingsService:
                 if kind == "area":
                     return _Container("area", value, areas[value].title, None)
                 raise _fail("project", f"{value} is an area; pass it as area")
-        if ctx.offline:
-            self.runner.require_macos()             # a title needs a read: NotMacOS (§5.5)
         if kind == "project":
             candidates = [(r.id, r.title) for r in ctx.projects() if r.status == "open"]
         else:
@@ -1325,9 +1330,9 @@ class ThingsService:
                     closing.add(it.id)
             if isinstance(it, jsoncmd.Todo) and (it.heading is not None or it.heading_id is not None):
                 ctx.warn(HEADING_WARNING)
-            if isinstance(it, jsoncmd.Todo) and it.list_id in containers and not (it.completed or it.canceled):
-                if it.operation == "create" or by_id.get(it.id) is None or by_id[it.id].status == "open":
-                    self._warn_reopen(ctx, containers[it.list_id])
+            if isinstance(it, jsoncmd.Todo) and it.list_id in containers and not (it.completed or it.canceled) \
+                    and (it.operation == "create" or by_id.get(it.id) is None or by_id[it.id].status == "open"):
+                self._warn_reopen(ctx, containers[it.list_id])
         self._guard_repeating(ctx, guarded, set(GUARD_FIELDS))
 
     def _json_checks(self, items: list, before: list[Item], containers: dict[str, _Container],

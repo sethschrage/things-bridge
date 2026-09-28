@@ -803,8 +803,7 @@ def parse_frame(raw: bytes, template: str) -> Frame:
         out = bytes(raw).decode("utf-8")        # bytes in; never text=True (\r in notes survives)
     except UnicodeDecodeError:
         raise ProtocolError(f"{template}: output is not UTF-8") from None
-    if out.endswith("\n"):                      # osascript appends exactly one newline
-        out = out[:-1]
+    out = out.removesuffix("\n")                # osascript appends exactly one newline
     # NEVER .strip()/.split()/.splitlines(): \x1c-\x1f are whitespace/line breaks in Python (R-ASR §7.3)
     rows = [r.split(US) for r in out.split(RS)]
     if len(rows) < 2 or rows[0][:2] != ["H", PROTOCOL] or rows[-1][0] != "E":

@@ -1280,13 +1280,23 @@ def test_offline_dry_run(t, w, clock):
     assert svc.add_todo(TodoSpec(title="x", project=w.taxes), dry_run=True).urls
     assert svc.raw_json([{"type": "to-do", "operation": "update", "id": w.milk, "attributes": {"title": "y"}}],
                         dry_run=True).urls
+    assert "list-id=0f8fad5b-d9cb-469f-a165-70867728950e" in svc.add_todo(
+        TodoSpec(title="x", area="0f8fad5b-d9cb-469f-a165-70867728950e"), dry_run=True).urls[0]    # legacy UUID
     with pytest.raises(NotMacOS):
         svc.add_todo(TodoSpec(title="x", project="Taxes"), dry_run=True)      # a title needs a read
+    for title in ("Groceries", "Shopping1", "Q3-Planning"):                  # id-shaped titles too
+        with pytest.raises(NotMacOS):
+            svc.add_todo(TodoSpec(title="x", project=title), dry_run=True)
+        with pytest.raises(NotMacOS):
+            svc.add_project(ProjectSpec(title="x", area=title), dry_run=True)
     with pytest.raises(NotMacOS):
         svc.set_status([w.milk], "completed", dry_run=True)                   # kinds need a read
     with pytest.raises(NotMacOS):
         svc.update_todo(w.milk, TodoPatch(title="x"))                         # real writes need macOS
+    with pytest.raises(NotMacOS):
+        svc.add_todo(TodoSpec(title="x"))
     assert r.template_calls == [] and t.log == []
+    assert r.write_locks == 0                   # checked before the lock: no state file off macOS
 
 
 # ---- verification ------------------------------------------------------------------------------------------------

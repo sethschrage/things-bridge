@@ -223,7 +223,8 @@ def _validate_item(item: JsonItem, path: str, *, nested: bool, strict: bool) -> 
         for key in STRICT_REFUSED:
             if key in given:
                 _fail(f"{attrs}/{key}", "is not supported by things-bridge",
-                      hint="dates can't be set; add tags or checklist items with the update URL (things_tag, things_update_todo)")
+                      hint=("dates can't be set; add tags or checklist items with the update URL (things_tag, "
+                            "things_update_todo)"))
     for key in ("completed", "canceled"):
         if key in given:
             urlscheme.check_bool(f"{attrs}/{key}", getattr(item, key))

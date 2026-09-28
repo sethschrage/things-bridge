@@ -422,7 +422,7 @@ def test_cli_without_yes_and_without_a_tty_refuses(monkeypatch, capsys, fake_run
 
 
 def test_cli_prompt_declined_does_nothing(monkeypatch, capsys, fake_runner, token):
-    code, out, err = cli_run(monkeypatch, capsys, fake_runner, "selftest", stdin="n\n", tty=True)
+    code, _out, err = cli_run(monkeypatch, capsys, fake_runner, "selftest", stdin="n\n", tty=True)
     assert code == 0 and "Cancelled; nothing was created." in err and "Nothing is deleted" in err
     assert fake_runner.template_calls == [] and fake_runner.dispatch_calls == []
 

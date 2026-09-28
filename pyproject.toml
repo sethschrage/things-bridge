@@ -24,3 +24,21 @@ dev = ["pytest>=8", "anyio>=4.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+extend-select = ["E", "W", "F", "B"]
+ignore = [
+    "UP035",    # typing.Callable & co.: collections.abc is not on the §1.4 stdlib import allowlist
+    "I001",     # import order is hand-kept: `import Things…` would trip the §1.4 'import things' check
+    "PLW1510",  # subprocess return codes are always inspected explicitly
+    "ISC004",   # long string literals are split on purpose
+    "B905",     # zip() runs over rows whose arity the parser already checked
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/things_bridge/applescript.py" = ["E501"]     # AppleScript blocks are verbatim from docs/DESIGN.md
+"tests/**" = ["E501", "E731", "BLE001", "C408", "DTZ", "FURB167", "PLE1206", "RUF015", "SIM", "UP031", "UP045"]

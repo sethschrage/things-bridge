@@ -50,7 +50,8 @@ PARAMS: Mapping[str, tuple[str, ...]] = MappingProxyType({   # doc order; auth-t
 TOKEN_ALWAYS = frozenset({"update", "update-project"})     # json: iff any operation == "update"
 SHOW_BUILTIN_IDS = ("inbox", "today", "anytime", "upcoming", "someday", "logbook", "tomorrow", "deadlines",
                     "repeating", "all-projects", "logged-projects")
-MAX_STRING_UTF16 = 4000      # "Maximum un-encoded string length: 4,000 characters" (counted in UTF-16 units: TAPI §2j, UNCERTAIN unit)
+# "Maximum un-encoded string length: 4,000 characters", counted in UTF-16 units (TAPI §2j, UNCERTAIN unit)
+MAX_STRING_UTF16 = 4000
 MAX_NOTES_CODEPOINTS = 10_000  # notes/prepend/append; code points >= graphemes, so conservative (TAPI §2j)
 MAX_CHECKLIST = 100
 MAX_URL_BYTES = 512 * 1024   # R-MEX §1.4 (ARG_MAX 1 MiB shared with env)
@@ -159,7 +160,8 @@ def enc(value: str, *, safe: str = "") -> str:
 
 
 def check_title(field: str, value: object) -> str:
-    """Titles, checklist/titles/to-dos lines, list/area/heading names, queries: one non-blank line ≤ 4000 UTF-16 units."""
+    """Titles, checklist/titles/to-dos lines, list/area/heading names, queries: one non-blank line of at most 4000
+    UTF-16 units."""
     s = check_str(field, value)
     if not s.strip():
         _fail(field, "must not be blank")
@@ -232,7 +234,8 @@ def format_datetime(field: str, value: object) -> str:
 
 def _check_date(field: str, s: str, vocabulary: str) -> None:
     if not DATE_RE.fullmatch(s):
-        _fail(field, f"{_clip(s)!r} is not {vocabulary}", hint="natural-language dates are not accepted; use YYYY-MM-DD")
+        _fail(field, f"{_clip(s)!r} is not {vocabulary}",
+              hint="natural-language dates are not accepted; use YYYY-MM-DD")
     try:
         date.fromisoformat(s)
     except ValueError:

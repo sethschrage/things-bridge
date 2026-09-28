@@ -145,7 +145,7 @@ class RedactFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             message = record.getMessage()
-        except Exception:                   # a bad format string must not break logging
+        except Exception:  # noqa: BLE001 - a bad format string must not break logging
             message = f"{record.msg!r} {record.args!r}"
         record.msg, record.args = redact(message), None
         if record.exc_info:

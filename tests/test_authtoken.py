@@ -183,7 +183,7 @@ def test_set_token_sends_the_token_only_on_stdin(sec, monkeypatch):
     monkeypatch.setenv(ENV, "env-token-not-this-one")
     sec.answers = [done(0), done(0, TOKEN + "\n")]
     set_token(TOKEN)
-    (write_argv, write_kw), (read_argv, read_kw) = sec.calls
+    (write_argv, write_kw), (read_argv, _read_kw) = sec.calls
     assert write_argv == [SECURITY, "-i"]
     assert all(TOKEN not in a for c in sec.calls for a in c[0]), "never in argv (visible in ps)"
     assert write_kw["input"] == (f'add-generic-password -U -s "{SERVICE}" -a "{ACCOUNT}" '

@@ -1,0 +1,2 @@
+LSOpenURLsWithRole() failed for the application /Applications/Things3.app with error -10810.
+procNotFound: no eligible process with specified descriptor

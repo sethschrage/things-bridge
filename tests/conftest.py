@@ -73,3 +73,17 @@ def state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 @pytest.fixture
 def clock() -> FakeClock:
     return FakeClock()
+
+
+@pytest.fixture
+def fake_things(clock):
+    """An empty in-memory Things 3 (tests/fakes.py) on the shared fake clock."""
+    from fakes import FakeThings
+    return FakeThings(clock)
+
+
+@pytest.fixture
+def fake_runner(fake_things, clock):
+    """A ``Runner`` over ``fake_things``: records calls, never spawns a process."""
+    from fakes import FakeRunner
+    return FakeRunner(fake_things, clock=clock)

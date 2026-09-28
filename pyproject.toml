@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "things-bridge"
+version = "0.1.0"
+description = "Safe CLI + MCP server for Things 3: URL-scheme writes, read-only AppleScript reads, never touches the database, never deletes"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+classifiers = ["Operating System :: MacOS :: MacOS X", "Programming Language :: Python :: 3"]
+dependencies = ["mcp>=2.2,<3"]          # pydantic comes with mcp; imported only in mcp_server.py
+
+[project.scripts]
+things-bridge = "things_bridge.cli:main"
+things-bridge-mcp = "things_bridge.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/things_bridge"]
+
+[dependency-groups]
+dev = ["pytest>=8", "anyio>=4.9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

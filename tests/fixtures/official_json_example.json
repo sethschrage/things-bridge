@@ -1,0 +1,122 @@
+[
+  {
+    "type": "project",
+    "attributes": {
+      "title": "Go Shopping",
+      "items": [
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Bread"
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Milk"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "type": "project",
+    "attributes": {
+      "title": "Vacation in Rome",
+      "notes": "Some time in August.",
+      "area": "Family",
+      "items": [
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Ask Sarah for travel guide"
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Add dates to calendar"
+          }
+        },
+        {
+          "type": "heading",
+          "attributes": {
+            "title": "Sights"
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Vatican City"
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "The Colosseum",
+            "notes": "12€"
+          }
+        },
+        {
+          "type": "heading",
+          "attributes": {
+            "title": "Planning"
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Call Paolo",
+            "completed": true
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Book flights",
+            "when": "today"
+          }
+        },
+        {
+          "type": "to-do",
+          "attributes": {
+            "title": "Research",
+            "checklist-items": [
+              {
+                "type": "checklist-item",
+                "attributes": {
+                  "title": "Hotels",
+                  "completed": true
+                }
+              },
+              {
+                "type": "checklist-item",
+                "attributes": {
+                  "title": "Transport from airport"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "type": "to-do",
+    "attributes": {
+      "title": "Pick up dry cleaning",
+      "when": "evening",
+      "tags": [
+        "Errand"
+      ]
+    }
+  },
+  {
+    "type": "to-do",
+    "attributes": {
+      "title": "Submit report",
+      "deadline": "2026-02-01",
+      "list": "Work"
+    }
+  }
+]

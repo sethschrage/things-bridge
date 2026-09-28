@@ -1501,3 +1501,107 @@ def test_not_offered_messages_are_verbatim():
                                      "the Logbook), or open it with things_show so you can delete it yourself.")
     assert NOT_OFFERED["checklist_edit"] == "I can append or prepend checklist items only."
     assert NOT_OFFERED["repeating"] == "Repeating to-dos must be changed in Things. I can open it for you."
+
+
+# ---- adversarial-review regressions ------------------------------------------------------------------------------
+
+def _close_project(pid: str) -> dict:
+    return {"type": "project", "operation": "update", "id": pid, "attributes": {"completed": True}}
+
+
+def test_raw_json_project_close_sees_moves_into_it(svc, r, t):
+    p, q = t.seed_project("P"), t.seed_project("Q")
+    x = t.seed_todo("x", project=q)
+    move = {"type": "to-do", "operation": "update", "id": x, "attributes": {"list-id": p}}
+    with pytest.raises(Refused) as e:
+        svc.raw_json([move, _close_project(p)])
+    assert e.value.details["open_children"] == [{"id": x, "title": "x"}]
+    nothing_sent(r, t)
+
+
+def test_raw_json_project_close_sees_moves_out_of_it(svc, r, t):
+    p, q = t.seed_project("P"), t.seed_project("Q")
+    x = t.seed_todo("x", project=p)
+    move = {"type": "to-do", "operation": "update", "id": x, "attributes": {"list-id": q}}
+    assert svc.raw_json([move, _close_project(p)]).sent is True
+
+
+def test_raw_json_project_close_sees_creates_into_it(svc, r, t):
+    p = t.seed_project("P")
+    create = {"type": "to-do", "attributes": {"title": "new", "list-id": p}}
+    with pytest.raises(Refused) as e:
+        svc.raw_json([create, _close_project(p)])
+    assert e.value.details["open_children"] == [{"id": None, "title": "new"}]
+    nothing_sent(r, t)
+    done = {"type": "to-do", "attributes": {"title": "done", "list-id": p, "completed": True}}
+    assert svc.raw_json([done, _close_project(p)]).sent is True
+
+
+def test_raw_json_project_close_sees_reopens(svc, r, t):
+    p = t.seed_project("P")
+    a = t.seed_todo("a", project=p)
+    close_a = {"type": "to-do", "operation": "update", "id": a, "attributes": {"completed": True}}
+    reopen_a = {"type": "to-do", "operation": "update", "id": a, "attributes": {"completed": False}}
+    with pytest.raises(Refused) as e:
+        svc.raw_json([close_a, reopen_a, _close_project(p)])
+    assert e.value.details["open_children"] == [{"id": a, "title": "a"}]
+    nothing_sent(r, t)
+
+
+def test_raw_json_project_close_sees_a_closed_todo_reopened_and_moved_in(svc, r, t):
+    p, q = t.seed_project("P"), t.seed_project("Q")
+    x = t.seed_todo("x", project=q, status="completed")
+    move = {"type": "to-do", "operation": "update", "id": x, "attributes": {"list-id": p}}
+    reopen = {"type": "to-do", "operation": "update", "id": x, "attributes": {"completed": False}}
+    assert svc.raw_json([move, _close_project(p)]).sent is True           # still completed: not an open child
+    with pytest.raises(Refused):
+        svc.raw_json([move, reopen, _close_project(p)])
+
+
+@pytest.mark.parametrize("when", ["someday", "2026-12-01"])
+def test_guard_passes_children_of_a_dormant_project(svc, r, t, when):
+    p = t.seed_project("Dormant", when=when)
+    c = t.seed_todo("Child", project=p)
+    assert svc.update_todo(c, TodoPatch(deadline="2026-12-20")).sent is True
+    assert svc.set_status([c], "completed").sent is True
+    d = t.seed_todo("Child 2", project=p)
+    with pytest.raises(Refused) as e:                  # `when` can crash Things on a template: still refused
+        svc.schedule([d], when="today")
+    assert e.value.message == REPEATING_REFUSAL and "Someday or future-scheduled project" in e.value.hint
+    assert t.crashes == 0
+
+
+def test_guard_still_refuses_hidden_items_in_an_active_project(svc, r, t):
+    p = t.seed_project("Active")
+    tmpl = t.seed_todo("Template", project=p, repeating=True)
+    with pytest.raises(Refused):
+        svc.set_status([tmpl], "completed")
+    with pytest.raises(Refused):
+        svc.raw_json([{"type": "to-do", "operation": "update", "id": tmpl, "attributes": {"deadline": "2026-12-01"}}])
+    nothing_sent(r, t)
+
+
+def test_add_todo_with_a_long_checklist_uses_json(svc, r, t, w):
+    lines = [f"{i:03d}" + "c" * 57 for i in range(100)]            # 6,099 characters once joined
+    res = svc.add_todo(TodoSpec(title="Pack", checklist=lines, project=w.party))
+    turl = dispatched(r)[0]
+    assert turl.command == "json"
+    (obj,) = payload(turl)
+    assert [i["attributes"]["title"] for i in obj["attributes"]["checklist-items"]] == lines
+    assert obj["attributes"]["list-id"] == w.party
+    assert res.sent is True and res.ids == [t.one("Pack")["id"]]
+
+
+def test_add_project_with_many_plain_todos_uses_json(svc, r, t):
+    names = [f"{i:02d}" + "c" * 58 for i in range(99)]             # 6,038 characters once joined
+    res = svc.add_project(ProjectSpec(title="Big", items=[ProjectItemSpec(kind="todo", title=n) for n in names]))
+    turl = dispatched(r)[0]
+    assert turl.command == "json"
+    assert [i["attributes"]["title"] for i in payload(turl)[0]["attributes"]["items"]] == names
+    assert res.sent is True
+
+
+def test_update_todo_refuses_an_overlong_checklist_append(svc, r, t, w):
+    with pytest.raises(InvalidInput):
+        svc.update_todo(w.inbox, TodoPatch(checklist_append=["c" * 60] * 100))
+    nothing_sent(r, t)

@@ -168,6 +168,11 @@ def _title(field: str, value: object) -> str:
     return urlscheme.check_title(field, value).strip()
 
 
+def _joined_too_long(lines: Sequence[str]) -> bool:
+    """True if newline-joined ``lines`` would pass the URL scheme's 4,000-character string limit."""
+    return urlscheme.utf16_len("\n".join(lines)) > urlscheme.MAX_STRING_UTF16
+
+
 def _clip(s: str, n: int = 60) -> str:
     return s if len(s) <= n else s[:n] + "…"
 
@@ -542,10 +547,18 @@ class ThingsService:
         with self._writing(dry_run) as ctx:
             container = self._todo_container(ctx, v)
             tags = self._canonical_tags(ctx, v["tags"], strict=strict_tags) if v["tags"] else None
-            turl = urlscheme.build_add(title=v["title"], notes=v["notes"], when=v["when"], deadline=v["deadline"],
-                                       tags=tags or None, checklist_items=v["checklist"],
-                                       list_id=container.id if container else None, heading=v["heading"],
-                                       reveal=True if reveal else None)
+            if v["checklist"] and _joined_too_long(v["checklist"]):
+                # one `checklist-items` string would pass 4,000 characters: json sends each item on its own
+                turl = urlscheme.build_json([jsoncmd.Todo(
+                    title=v["title"], notes=v["notes"], when=v["when"], deadline=v["deadline"], tags=tags or None,
+                    checklist_items=[jsoncmd.ChecklistItem(t) for t in v["checklist"]],
+                    list_id=container.id if container else None, heading=v["heading"])],
+                    reveal=True if reveal else None)
+            else:
+                turl = urlscheme.build_add(title=v["title"], notes=v["notes"], when=v["when"],
+                                           deadline=v["deadline"], tags=tags or None, checklist_items=v["checklist"],
+                                           list_id=container.id if container else None, heading=v["heading"],
+                                           reveal=True if reveal else None)
             dispatches, failure = self._dispatch(ctx, [turl], dry_run)
             create = self._todo_create(v, container, tags)
             return self._finish(ctx, "add_todo", dispatches, failure, creates=[create], update=False)
@@ -590,7 +603,8 @@ class ThingsService:
             for it in items:
                 if it.get("tags"):
                     it["tags"] = self._canonical_tags(ctx, it["tags"], strict=strict_tags)
-            plain = all(it["kind"] == "todo" and set(it) == {"kind", "title"} for it in items)
+            plain = all(it["kind"] == "todo" and set(it) == {"kind", "title"} for it in items) \
+                and not _joined_too_long([it["title"] for it in items])
             if plain:
                 turl = urlscheme.build_add_project(title=title, notes=notes, when=when, deadline=deadline,
                                                    tags=tags or None, area_id=area.id if area else None,
@@ -1228,12 +1242,22 @@ class ThingsService:
                 raise _fail("id", f"{i} is a {items[i].kind}; use {other}")
         return [items[i] for i in ids]
 
-    def _guard_repeating(self, ctx: _Call, items: Sequence[Item], fields: set[str]) -> None:
+    def _guard_repeating(self, ctx: _Call, items: Sequence[Item], fields: set[str], *,
+                         per_item: dict[str, set[str]] | None = None) -> None:
         """N11: refuse when/deadline/status writes to an open item that no list shows (a possible repeating
-        template: TAPI §1 crash). Upcoming alone passes only with a future start date (templates rest with none)."""
-        if ctx.offline or not fields & GUARD_FIELDS:
+        template: TAPI §1 crash). Upcoming alone passes only with a future start date (templates rest with none).
+        ``per_item`` (id -> fields) overrides ``fields`` for the ids it names.
+
+        Children of a *dormant* project (in Someday, or in Upcoming with a future start date, and in neither
+        Today nor Anytime) are hidden from every list too, even when they are ordinary to-dos (lists-in-depth:
+        "While they slumber in Someday, neither to-dos nor projects will show up in Anytime or Upcoming"). They
+        can't be told apart from a template there, so they pass for deadline/completed/canceled (on a template
+        Things ignores those, and verification reports it) but ``when`` (the TAPI §1 crash) is still refused."""
+        per_item = per_item or {}
+        wanted = {it.id: per_item.get(it.id, fields) & GUARD_FIELDS for it in items}
+        if ctx.offline or not any(wanted.values()):
             return
-        open_items = [it for it in items if it.status == "open"]
+        open_items = [it for it in items if it.status == "open" and wanted[it.id]]
         if not open_items:
             return
         frame = self.runner.run_template("MEMBERSHIP", list(GUARD_LISTS))
@@ -1243,20 +1267,44 @@ class ThingsService:
         hidden = [it for it in open_items
                   if it.id not in visible
                   and not (it.id in members.get("upcoming", set()) and it.start_date and it.start_date > today)]
+        dormant_candidates = {it.project.id for it in hidden if it.project is not None and "when" not in wanted[it.id]}
+        active = members.get("today", set()) | members.get("anytime", set())
+        dormant = {pid for pid in dormant_candidates if pid in members.get("someday", set()) and pid not in active}
+        upcoming = [pid for pid in dormant_candidates - dormant
+                    if pid in members.get("upcoming", set()) and pid not in active]
+        if upcoming:
+            found, _, _ = self._rows(upcoming, notes="none")
+            dormant |= {pid for pid, p in found.items()
+                        if p.kind == "project" and p.start_date and p.start_date > today}
+        hidden = [it for it in hidden
+                  if not (it.project is not None and it.project.id in dormant and "when" not in wanted[it.id])]
         if hidden:
             listing = ", ".join(f"'{_clip(it.title, 40)}' ({it.id})" for it in hidden[:10])
-            raise Refused(REPEATING_REFUSAL, hint=f"{NOT_OFFERED['repeating']} Affected: {listing}",
-                          details={"ids": [it.id for it in hidden]})
+            hint = f"{NOT_OFFERED['repeating']} Affected: {listing}"
+            if any(it.project is not None for it in hidden):
+                hint += (" (A to-do inside a Someday or future-scheduled project is hidden from every list as "
+                         "well, so its start date can't be changed through automation either.)")
+            raise Refused(REPEATING_REFUSAL, hint=hint, details={"ids": [it.id for it in hidden]})
 
     def _guard_project_children(self, ctx: _Call, pids: Sequence[str], status: str, *,
-                                closing: set[str] = frozenset()) -> None:
+                                closing: set[str] = frozenset(), is_open: dict[str, bool] | None = None,
+                                moved: dict[str, str] | None = None,
+                                incoming: Sequence[dict] = ()) -> None:
         """N12: completing/canceling a project with open to-dos is ignored (OFF-URL) or cascades (TAPI §3); refuse.
-        To-dos in ``closing`` are closed earlier in the same URL, so they don't count."""
+        To-dos in ``closing`` are closed earlier in the same URL, so they don't count. For a json payload the
+        state the earlier operations leave behind is passed in: ``is_open`` (to-do id -> open after them),
+        ``moved`` (to-do id -> its new ``list-id``) and ``incoming`` (open to-dos created in or moved into the
+        project, as ``{"id", "title", "project"}``)."""
         if ctx.offline or status not in ("completed", "canceled") or not pids:
             return
+        is_open = is_open or {}
+        moved = moved or {}
         open_children = [{"id": r.id, "title": r.title, "project": pid}
                          for pid in pids for r in self._scan("project", pid)
-                         if r.status == "open" and r.id not in closing]
+                         if r.id not in closing and is_open.get(r.id, r.status == "open")
+                         and moved.get(r.id, pid) == pid]
+        seen = {c["id"] for c in open_children}
+        open_children += [c for c in incoming if c["project"] in pids and (c["id"] is None or c["id"] not in seen)]
         if open_children:
             raise Refused(f"The project still has {len(open_children)} open to-do(s), so it can't be {status} yet.",
                           hint="complete or cancel these first (things_set_status), then the project",
@@ -1316,24 +1364,42 @@ class ThingsService:
 
     def _json_guards(self, ctx: _Call, items: list, before: list[Item], containers: dict[str, _Container]) -> None:
         by_id = {it.id: it for it in before}
-        guarded, closing = [], set()
+        guarded: list[Item] = []
+        guarded_fields: dict[str, set[str]] = {}
+        # N12 over the whole payload: what the operations before a project close leave behind.
+        is_open: dict[str, bool] = {}          # to-do id -> open after the earlier operations
+        moved: dict[str, str] = {}             # to-do id -> list-id it was moved to
+        created: list[dict] = []               # open to-dos created into a project
         for it in items:
             if it.operation == "update":
                 fields = {k for k in ("when", "deadline") if getattr(it, k) is not None}
                 fields |= {k for k in ("completed", "canceled") if getattr(it, k) is not None}
                 if fields and it.id in by_id:
-                    guarded.append(by_id[it.id])
+                    if it.id not in guarded_fields:
+                        guarded.append(by_id[it.id])
+                    guarded_fields.setdefault(it.id, set()).update(fields)
                 if isinstance(it, jsoncmd.Project) and (it.completed or it.canceled):
+                    incoming = created + [
+                        {"id": tid, "title": by_id[tid].title if tid in by_id else tid, "project": pid}
+                        for tid, pid in moved.items()
+                        if is_open.get(tid, tid not in by_id or by_id[tid].status == "open")]
                     self._guard_project_children(ctx, [it.id], "completed" if it.completed else "canceled",
-                                                 closing=set(closing))
-                elif isinstance(it, jsoncmd.Todo) and (it.completed or it.canceled):
-                    closing.add(it.id)
+                                                 is_open=dict(is_open), moved=dict(moved), incoming=incoming)
+                elif isinstance(it, jsoncmd.Todo):
+                    if it.completed or it.canceled:
+                        is_open[it.id] = False
+                    elif it.completed is False or it.canceled is False:
+                        is_open[it.id] = True
+                    if it.list_id is not None:
+                        moved[it.id] = it.list_id
+            elif isinstance(it, jsoncmd.Todo) and it.list_id is not None and not (it.completed or it.canceled):
+                created.append({"id": None, "title": it.title or "", "project": it.list_id})
             if isinstance(it, jsoncmd.Todo) and (it.heading is not None or it.heading_id is not None):
                 ctx.warn(HEADING_WARNING)
             if isinstance(it, jsoncmd.Todo) and it.list_id in containers and not (it.completed or it.canceled) \
                     and (it.operation == "create" or by_id.get(it.id) is None or by_id[it.id].status == "open"):
                 self._warn_reopen(ctx, containers[it.list_id])
-        self._guard_repeating(ctx, guarded, set(GUARD_FIELDS))
+        self._guard_repeating(ctx, guarded, set(GUARD_FIELDS), per_item=guarded_fields)
 
     def _json_checks(self, items: list, before: list[Item], containers: dict[str, _Container],
                      today: date) -> tuple[list[_Create], list[Expect], list[str]]:

@@ -298,6 +298,17 @@ def check_deadline(field: str, value: object, *, strict: bool = True) -> str:
 
 # ---- builders -----------------------------------------------------------------------------------
 
+def _check_joined(key: str, joined: str, what: str) -> str:
+    """A newline- or comma-joined value is one ``string`` parameter, so the 4,000-character limit (url-scheme.md,
+    Data Types) applies to the whole value, not just to each line or tag."""
+    n = utf16_len(joined)
+    if n > MAX_STRING_UTF16:
+        _fail(key, f"is {n} UTF-16 units long once its {what} are joined; Things keeps only the first "
+                   f"{MAX_STRING_UTF16} and silently drops the rest",
+              hint="use fewer or shorter entries, or send them through the json command (one string each)")
+    return joined
+
+
 def _serialize(command: str, key: str, value: object, *, strict: bool) -> str | None:
     """One parameter value -> its unencoded string; None = omit."""
     update = command in TOKEN_ALWAYS
@@ -321,7 +332,7 @@ def _serialize(command: str, key: str, value: object, *, strict: bool) -> str | 
     if key in _TAG_KEYS:
         tags = check_tags(key, value)
         if tags:
-            return ",".join(tags)
+            return _check_joined(key, ",".join(tags), "tags")
         return "" if key == "tags" and update else None          # tags=[] replaces with none on update
     if key in _LINE_KEYS:
         if key == "checklist-items" and update:                  # D11: replacing destroys unreadable items
@@ -330,7 +341,7 @@ def _serialize(command: str, key: str, value: object, *, strict: bool) -> str | 
         lines = check_lines(key, value, max_items=MAX_CHECKLIST if key in _CHECKLIST_KEYS else None)
         if not lines and key == "titles":
             _fail(key, "needs at least one title")
-        return "\n".join(lines) if lines else None
+        return _check_joined(key, "\n".join(lines), "lines") if lines else None
     if key in _ID_KEYS:
         return check_id(key, value, allow_builtin=command == "show")
     if key in _BOOL_KEYS:

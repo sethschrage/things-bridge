@@ -444,6 +444,7 @@ def build_json(items: Sequence["jsoncmd.JsonItem"], *, reveal: bool | None = Non
 | Rule | Where | Source |
 |---|---|---|
 | `title` and each checklist or `titles` line: non-blank, no `\n`, ≤ 4000 UTF-16 units | all | OFF-URL "Data Types"; R-PAL §4.8 |
+| A newline- or comma-joined value (`titles`, `to-dos`, checklist keys, `tags`, `add-tags`, `filter`) as a whole: ≤ 4000 UTF-16 units (it is one `string`). add_todo/add_project send longer lists through `json` | all | OFF-URL "Data Types" |
 | `notes`, `prepend-notes`, `append-notes`: ≤ 10,000 code points | all | OFF-URL |
 | Checklist lists: ≤ 100 items | add, update | OFF-URL |
 | Tags: non-blank, no `,` (no escape exists) | all | OFF-URL "Comma separated"; R-PAL P6 |
@@ -1936,7 +1937,7 @@ The codes are CONFIRMED from Apple SDK headers and the ASLR error table (R-MEX �
 | Q11 | Is json `add-tags` a string or an array? | CONFLICT (OFF-URL vs TJC) | **not used**; plain `update` | ST-12 (`--probe-conflicts`, needs ≥ 1 existing tag) |
 | Q12 | Does `update-project?completed=true` with open children get ignored (official) or cascade (TAPI §3)? | CONFLICT | guard refuses | ST-12 (`--probe-conflicts`, on its own project) |
 | Q13 | Are repeating templates absent from **all** of Inbox, Today, Anytime, Someday and Upcoming list reads? Is their `activation date` missing? | Someday: CONFIRMED (lab); others UNCERTAIN | guard: Upcoming-only needs a future start date | DR-rep with a user-supplied repeating to-do id (read-only) |
-| Q14 | Guard false refusals: are to-dos inside a *future-scheduled* project visible in any list? | UNCERTAIN | refused, with a clear message | ST-10 |
+| Q14 | Guard false refusals: are to-dos inside a *future-scheduled* project visible in any list? | UNCERTAIN (lists-in-depth: children of a Someday project are not) | children of a dormant project (Someday, or Upcoming with a future start, and not Today/Anytime) pass for deadline/completed/canceled; `when` is still refused (TAPI §1 crash risk if it is a template) | ST-10 |
 | Q15 | Modal-sheet trap: do top-level `to dos` read as empty while a sheet is open? | CONFIRMED (1 lab source) | FIND_CREATED uses list scopes, plus a `D` diagnostic | M |
 | Q16 | What happens with a wrong token (sheet? parked?)? | UNCERTAIN | "verified=false" reason (2) | M (never automated: it would leave an error sheet) |
 | Q17 | What happens past 250 items per 10 s? | UNCERTAIN | never exceeded (200 budget) | – (not tested on purpose) |

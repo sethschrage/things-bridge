@@ -474,9 +474,9 @@ def test_checklist_limit(builder, key):
 
 
 def test_url_size_limit(monkeypatch):
-    lines = ["é" * 4000] * 60                            # each é is 6 encoded bytes: ~1.4 MB
+    todos = [Todo(title="x", notes="é" * 9000) for _ in range(12)]   # each é is 6+ encoded bytes: ~650 KB
     with pytest.raises(InvalidInput, match="bytes; the limit is 524288") as err:
-        build_add(titles=lines)
+        build_json(todos)
     assert "split" in err.value.hint
     monkeypatch.setattr(us, "MAX_URL_BYTES", 40)
     build_add(title="x" * 10)                           # things:///add?title= + 10 = 30 bytes
@@ -863,3 +863,24 @@ def test_build_version_exists_but_is_never_dispatched_by_the_service():
     if not service.exists():
         pytest.skip("service.py not written yet")
     assert "build_version" not in service.read_text(encoding="utf-8")
+
+
+# ---- joined values are one `string`: the 4,000-character limit applies to the whole value ------------------------
+
+@pytest.mark.parametrize("build, kwargs, key", [
+    (build_add, {"title": "x", "checklist_items": ["c" * 60] * 100}, "checklist-items"),
+    (build_add_project, {"title": "x", "to_dos": ["c" * 60] * 99}, "to-dos"),
+    (build_update, {"id": "abcdefghijklmnopqrstuv", "append_checklist_items": ["c" * 60] * 100},
+     "append-checklist-items"),
+    (build_add, {"title": "x", "tags": ["t" * 900] * 5}, "tags"),
+])
+def test_joined_values_respect_the_string_limit(build, kwargs, key):
+    with pytest.raises(InvalidInput) as e:
+        build(**kwargs)
+    assert e.value.details.get("field") == key and "joined" in e.value.message
+
+
+def test_joined_values_at_the_limit_pass():
+    lines = ["c" * 39] * 100                                       # 100*39 + 99 newlines = 3,999
+    turl = build_add(title="x", checklist_items=lines)
+    assert dict(turl.params)["checklist-items"] == "\n".join(lines)

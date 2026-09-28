@@ -54,6 +54,7 @@ URL_LITERAL = "things:///"
 EXCLUDED_KEYWORDS = ("duplicate", "use_clipboard", "show_quick_entry", "creation_date", "completion_date")
 BUILDERS = {"urlscheme.py", "jsoncmd.py"}   # they support N13's parameters only to match the doc
 PROCESS_APIS = ("system", "popen", "spawn", "exec", "fork", "posix_spawn", "startfile")
+OS_MODULES = frozenset({"os", "posix", "nt"})
 TOKEN_ENV = "THINGS_AUTH_TOKEN"
 
 
@@ -140,16 +141,36 @@ def dynamic_code(name: str, src: str) -> list[str]:
 
 def process_apis(name: str, src: str) -> list[str]:
     """``subprocess`` outside runner.py/authtoken.py (by name, even without an import), and os-level process
-    calls anywhere."""
+    calls anywhere, however they are spelled: ``os.system``, ``import os as o; o.system``,
+    ``from os import system``/``*``, and ``getattr(os, <anything but a harmless constant>)``."""
     bad = []
-    for node in ast.walk(ast.parse(src)):
+    tree = ast.parse(src)
+    os_names = {"os", "posix", "nt"}                    # module names and their aliases
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in OS_MODULES and alias.asname:
+                    os_names.add(alias.asname)
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module in OS_MODULES:
+            for alias in node.names:
+                if alias.name == "*" or alias.name.startswith(PROCESS_APIS):
+                    bad.append(f"{name}:{node.lineno}: from {node.module} import {alias.name}")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr" \
+                and node.args and isinstance(node.args[0], ast.Name) \
+                and (node.args[0].id in os_names or node.args[0].id == "subprocess"):
+            attr = node.args[1] if len(node.args) > 1 else None
+            if not (isinstance(attr, ast.Constant) and isinstance(attr.value, str)
+                    and not attr.value.startswith(PROCESS_APIS) and node.args[0].id != "subprocess"):
+                bad.append(f"{name}:{node.lineno}: {ast.unparse(node)}")
+            continue
         path = dotted(node) if isinstance(node, ast.Attribute) else None
         if path is None:
             continue
         head, _, attr = path.partition(".")
         if head == "subprocess" and name not in ONLY_IN["subprocess"]:
             bad.append(f"{name}:{node.lineno}: {path}")
-        if head == "os" and attr.startswith(PROCESS_APIS):
+        if head in os_names and attr.startswith(PROCESS_APIS):
             bad.append(f"{name}:{node.lineno}: {path}")
     return bad
 
@@ -377,6 +398,13 @@ BAD = [
     ("process_apis", "service.py", "import os\nos.execv('/bin/sh', [])\n"),
     ("process_apis", "runner.py", "os.posix_spawn('/bin/sh', [], {})\n"),
     ("process_apis", "cli.py", "subprocess.run(['x'])\n"),
+    ("process_apis", "service.py", "from os import system\nsystem('osascript -e x')\n"),
+    ("process_apis", "service.py", "from os import execv, posix_spawn\nexecv('/bin/sh', [])\n"),
+    ("process_apis", "service.py", "from posix import *\n"),
+    ("process_apis", "service.py", "import os as o\no.system('x')\n"),
+    ("process_apis", "service.py", "import os\ngetattr(os, 'sys' + 'tem')('x')\n"),
+    ("process_apis", "service.py", "import os\ngetattr(os, 'popen')('x')\n"),
+    ("process_apis", "cli.py", "import subprocess\ngetattr(subprocess, 'run')(['x'])\n"),
     ("path_literals", "service.py", "OSA = '/usr/bin/osascript'\n"),
     ("path_literals", "runner.py", "SEC = '/usr/bin/security'\n"),
     ("path_literals", "cli.py", "# runs /usr/bin/open\n"),
@@ -406,6 +434,7 @@ GOOD = [
     ("import_violations", "mcp_server.py", "from mcp.server.mcpserver import MCPServer\nimport pydantic\n"),
     ("import_violations", "x.py", "from . import urlscheme\nfrom .errors import Refused\n"),
     ("process_apis", "runner.py", "subprocess.run(['x'])\n"),
+    ("process_apis", "service.py", "from os import environ, path\nimport os\ngetattr(os, 'sep')\n"),
     ("path_literals", "runner.py", "OPEN, OSASCRIPT = '/usr/bin/open', '/usr/bin/osascript'\n"),
     ("url_literals", "urlscheme.py", "SCHEME_PREFIX = 'things:///'\n"),
     ("url_literals", "cli.py", "HINT = 'In Things: Settings → General'\n"),

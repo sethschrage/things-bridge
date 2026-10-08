@@ -1573,6 +1573,20 @@ def test_guard_passes_children_of_a_dormant_project(svc, r, t, when):
     assert t.crashes == 0
 
 
+def test_guard_refuses_a_project_no_list_shows_and_says_why(svc, r, t):
+    """Things 3.24.1: `to dos of list "Anytime"` omits projects and `projects of list` fails, so an Anytime project
+    can't be told apart from a repeating one. OFF-URL forbids these fields on repeating projects: refuse."""
+    t.list_todos_include_projects = False
+    t.list_projects_fail = True
+    p = t.seed_project("Kitchen", when="anytime")
+    for call in (lambda: svc.set_status([p], "completed"), lambda: svc.set_status([p], "canceled"),
+                 lambda: svc.schedule([p], deadline="2026-12-01")):
+        with pytest.raises(Refused) as e:
+            call()
+        assert e.value.message == REPEATING_REFUSAL and "projects in Anytime" in e.value.hint
+    nothing_sent(r, t)
+
+
 def test_guard_still_refuses_hidden_items_in_an_active_project(svc, r, t):
     p = t.seed_project("Active")
     tmpl = t.seed_todo("Template", project=p, repeating=True)

@@ -192,6 +192,7 @@
 
 * **Token in `ps`.** The token is visible in the argv of the short-lived `open` process, for well under a second (R-MEX §4.2). Avoiding that would need PyObjC, a new dependency. Accepted.
 * **Repeating-template guard is heuristic.** AppleScript cannot read repeat rules (R-ASR §6). The guard relies on "templates are invisible to list reads" (TAPI §5e, re-validated on 3.23). Visibility in *Upcoming* is UNCERTAIN, which is why the guard adds an extra condition for Upcoming-only items (§2.9). `doctor --check-repeating ID` checks this live, read-only.
+  On Things 3.24.1 (macOS 26.6) the heuristic also catches ordinary items, and the guard refuses them: `to dos of list "Anytime"` omits projects, `projects of list` fails with −1728 for every list despite OFF-AS documenting it, and a project's Someday to-dos appear in no list. So a project in Anytime, or a Someday to-do inside a project, can't have its `when`, `deadline` or status changed through things-bridge. OFF-URL says those four fields can't be updated on repeating to-dos or projects, and no documented read tells such an item apart from a repeating one, so the refusal stands; the hint explains it.
 * **Privacy.** Data read by the MCP tools goes to the model provider. The README quotes OFF-AI "A note on data privacy".
 * **Late writes.** A URL write parked behind Things' "Enable Things URLs?" sheet applies later, when the user clicks Enable (R-MEX §3, one lab source). The not-verified message says so.
 

@@ -1284,7 +1284,13 @@ class ThingsService:
             hint = f"{NOT_OFFERED['repeating']} Affected: {listing}"
             if any(it.project is not None for it in hidden):
                 hint += (" (A to-do inside a Someday or future-scheduled project is hidden from every list as "
-                         "well, so its start date can't be changed through automation either.)")
+                         "well, so its start date can't be changed through automation either. Things 3.24.1 also "
+                         "leaves a project's Someday to-dos out of every list read.)")
+            if any(it.kind == "project" for it in hidden):
+                hint += (" (Things 3.24.1 leaves projects in Anytime out of every list read, and the documented "
+                         "`projects of list` read fails, so an Anytime project can't be told apart from a repeating "
+                         "one. Things' URL scheme docs say when, deadline, completed and canceled can't be updated "
+                         "on repeating projects, so things-bridge doesn't send them. Change it in Things.)")
             raise Refused(REPEATING_REFUSAL, hint=hint, details={"ids": [it.id for it in hidden]})
 
     def _guard_project_children(self, ctx: _Call, pids: Sequence[str], status: str, *,

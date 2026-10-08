@@ -190,6 +190,7 @@ class FakeThings:
         # UNCERTAIN behaviours (DESIGN §6.1), one reading each
         self.log_immediately = True              # Q24: completed items leave their lists at once
         self.list_todos_include_projects = True  # R-ASR §3: `to dos of list` returns projects too
+        self.list_projects_fail = False          # Things 3.24.1: `projects of list` fails with -1728
         self.app_todos_include_projects = False  # Q4
         self.todo_id_resolves_projects = True    # Q23
         self.project_complete_mode = "ignore"    # Q12: "ignore" (OFF-URL) or "cascade" (TAPI §3)
@@ -1174,7 +1175,7 @@ class FakeThings:
         out = [_rec("H", "tb1", "membership", self._gmt())]
         for key in args:
             ids = [it["id"] for it in self._list_todos(key)]
-            pids = [it["id"] for it in self._list_projects(key)]
+            pids = [] if self.list_projects_fail else [it["id"] for it in self._list_projects(key)]
             out.append(_rec("M", key, *ids, *pids))
         out.append(_rec("E", str(len(args))))
         return out
@@ -1215,7 +1216,11 @@ class FakeThings:
         else:
             out.append(_rec("K", "range", "0", "Things3 got an error: Can’t get to dos 1 thru 1 of list id "
                                                "\"TMLogbookListSource\".", "-1719"))
-        out.append(_rec("K", "list-projects", "1", str(len(self._list_projects("someday")))))
+        if self.list_projects_fail:
+            out.append(_rec("K", "list-projects", "0", "Things3 got an error: Can’t get every project of list id "
+                                                    "\"TMSomedayListSource\".", "-1728"))
+        else:
+            out.append(_rec("K", "list-projects", "1", str(len(self._list_projects("someday")))))
         n = str(len(self._list_todos("today")))
         out.append(_rec("K", "date-columns-aligned", "1", n, n, n))
         app = self._app_todos()

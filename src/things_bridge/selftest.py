@@ -17,6 +17,8 @@ Hard invariants (§6.2):
    applied only to the selftest's own item, under ``--probe-conflicts``.
 4. Reads may see the user's lists, but checks only look at the selftest's own ids.
 5. After a failure no later step runs. Close-out (ST-13) then completes or cancels only ``created`` items.
+6. The repeating guard skips ``created`` ids, and only those. The URL scheme has no parameter that makes an item
+   repeat (OFF-URL), so nothing this run created can be a repeating template. Every other id still gets the guard.
 """
 
 import json
@@ -419,7 +421,9 @@ class _Selftest:
         cfg = replace(self.config, verify=True, verify_timeout_s=self.timeout_s,
                       max_batch=max(self.config.max_batch, MIN_BATCH),
                       confirm_threshold=max(self.config.confirm_threshold, MIN_BATCH))
-        self._svc = service.ThingsService(self.runner, cfg, today=self.today_fn)
+        # created_here: the repeating guard can't tell this run's Anytime project (or a Someday to-do inside it)
+        # from a repeating template on Things 3.24.1, but nothing the URL scheme creates can repeat (OFF-URL).
+        self._svc = service.ThingsService(self.runner, cfg, today=self.today_fn, created_here=self.created)
         parts = [f"Things {version} " + ("launched hidden by this run" if self.launched else "running"),
                  "Automation granted",
                  f"token {token.detail}" if self.has_token else
@@ -647,7 +651,9 @@ class _Selftest:
         c.expect("project start date tomorrow", p.start_date == self.tomorrow, p.start_date)
         if c.failures:
             return c.result(f"update-project when={self.tomorrow}", [pid])
-        kids = [self.ids[k] for k in ("A", "beta", "U") if k in self.ids]
+        # Q14 is about to-dos with no start date of their own. beta is a Someday to-do, and Things 3.24.1 shows a
+        # project's Someday to-dos in no list whatever the project's schedule, so it can't answer Q14.
+        kids = [self.ids[k] for k in ("A", "U") if k in self.ids]
         rows = self._rows(kids)
         open_kids = [i for i in kids if i in rows and rows[i].status == "open"]
         members = self._membership(LIST_KEYS)
@@ -748,8 +754,8 @@ class _Selftest:
             return "skip", f"{NO_TOKEN}: closing items needs the auth token", self.left_open
         items = self._rows(self.order)
         problems: list[tuple[str | None, str]] = []
-        # A project left scheduled in the future (ST-10 cut short) hides its to-dos from every list, and the
-        # repeating guard would then refuse to close them: put it back in Anytime first.
+        # A project left scheduled in the future (ST-10 cut short) goes back to Anytime first, so the run leaves it in a
+        # normal state. The repeating guard skips the run's own ids (invariant 6), so this isn't needed to get past it.
         for i in self.order:
             it = items.get(i)
             if it and it.kind == "project" and it.status == "open" and it.start_date \
@@ -802,7 +808,8 @@ class _Selftest:
             if not hidden:
                 problems.append((None, f"close to-dos: [{e.code}] {_one_line(e.message, 200)}"))
                 return
-            # nothing was sent: the repeating guard refused some ids before dispatch, so close the rest
+            # Defensive only: the repeating guard skips the run's own ids (invariant 6). If a guard ever refuses some
+            # ids before dispatch anyway, nothing was sent, so close the rest.
             problems.append((None, f"the repeating guard kept {', '.join(hidden)} open"))
             rest = [i for i in todos if i not in hidden]
             if rest:

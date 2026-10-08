@@ -300,6 +300,10 @@ Start with `things-bridge doctor`. It checks everything read-only and prints a r
   templates being invisible to list reads, which lab tests have shown for Someday. Visibility in Upcoming is less
   certain, so an item seen only in Upcoming passes only if its start date is in the future. Check with
   `doctor --check-repeating ID`.
+  On Things 3.24.1 the guard also refuses ordinary items. Anytime projects, and Someday to-dos inside a project,
+  appear in no AppleScript list read, so things-bridge can't tell them from repeating ones. It won't complete,
+  cancel, schedule or set a deadline on them; do that in Things. The selftest is the one exception, for the items it
+  created itself: nothing the URL scheme creates can repeat.
 * **Privacy.** Whatever the MCP tools read goes to your model provider (see [Safety](#safety)).
 * **Late writes.** A URL held behind Things' "Enable Things URLs?" prompt applies whenever you click Enable. The
   not-verified message says so.

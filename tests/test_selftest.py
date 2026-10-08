@@ -231,6 +231,45 @@ def test_full_run_passes(fake_runner, fake_things, clock, lib, token):
     assert FAKE_TOKEN not in json.dumps(dataclasses.asdict(report), ensure_ascii=False)
 
 
+def test_full_run_passes_on_things_3_24_1(fake_runner, fake_things, clock, lib, token):
+    """Things 3.24.1 hides Anytime projects and a project's Someday to-dos from every list read, so the repeating
+    guard can't tell them from templates. The run's own items are exempt (nothing the URL scheme creates can
+    repeat), so ST-10 and the close-out finish; the user's items, templates included, stay untouched."""
+    t = fake_things
+    t.model_things_3_24_1()
+    report, _ = go(fake_runner, clock)
+    s = by_name(report)
+    assert report.ok, failures(report)
+    for name in ALL_STEPS:
+        want = {"ST-12": "skip", "ST-14": "info"}.get(name, "pass")
+        assert s[name].status == want, (name, s[name].detail)
+    assert s["Q3"].detail.startswith("no:")
+    for i in report.created_ids:
+        it = t.get(i)
+        assert it["status"] != "open" and it["logged"], it
+    assert_untouched(t, lib)
+    assert t.crashes == 0 and t.errors == []
+
+
+def test_without_the_exemption_things_3_24_1_refuses_the_runs_own_items(monkeypatch, fake_runner, fake_things,
+                                                                        clock, lib, token):
+    """Negative control for the test above: with created_here dropped, the guard refuses ST-10 (the run's Anytime
+    project) and the close-out leaves items open. The exemption is what makes the 3.24.1 run finish."""
+    real = selftest.service.ThingsService
+
+    def no_exemption(*a, created_here=frozenset(), **kw):
+        return real(*a, **kw)
+    monkeypatch.setattr(selftest.service, "ThingsService", no_exemption)
+    fake_things.model_things_3_24_1()
+    report, _ = go(fake_runner, clock)
+    s = by_name(report)
+    assert not report.ok
+    assert s["ST-10"].status == "fail" and "isn't visible in any Things list" in s["ST-10"].detail
+    assert s["ST-13"].status == "fail" and report.project_id in s["ST-13"].detail
+    assert_untouched(fake_things, lib)
+    assert fake_things.crashes == 0
+
+
 def test_full_run_step_evidence(fake_runner, fake_things, clock, token):
     report, _ = go(fake_runner, clock)
     s = by_name(report)

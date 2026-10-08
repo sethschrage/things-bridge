@@ -311,6 +311,15 @@ def test_service_never_uses_excluded_params(name):
     assert excluded_params(name, read(name)) == []
 
 
+def test_only_the_selftest_exempts_ids_from_the_repeating_guard():
+    """``created_here`` skips the repeating guard for ids the process itself created through the URL scheme. Only
+    the selftest may pass it (its own verified ``created`` set); the CLI and the MCP server must never."""
+    users = sorted(n for n in MODULES if "created_here" in read(n))
+    assert users == ["selftest.py", "service.py"], users
+    assert read("selftest.py").count("created_here=") == 1
+    assert "created_here=self.created)" in read("selftest.py")
+
+
 def test_service_text_never_mentions_excluded_params():
     src = read("service.py")
     for needle in ("duplicate=", "use_clipboard=", "show_quick_entry=", "creation_date=", "completion_date="):

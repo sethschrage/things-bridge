@@ -17,7 +17,7 @@ import unicodedata
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Callable, Iterator, Literal, Mapping, Sequence
+from typing import AbstractSet, Callable, Iterator, Literal, Mapping, Sequence
 
 from . import applescript, jsoncmd, urlscheme
 from .applescript import ScanRow
@@ -317,10 +317,16 @@ class _Call:
 # ---- the service ----------------------------------------------------------------------------------------
 
 class ThingsService:
-    def __init__(self, runner: Runner, config: Config | None = None, *, today: Callable[[], date] = date.today):
+    def __init__(self, runner: Runner, config: Config | None = None, *, today: Callable[[], date] = date.today,
+                 created_here: AbstractSet[str] = frozenset()):
         self.runner = runner
         self.config = config if config is not None else Config()
         self._today = today
+        # Ids this process itself created through the URL scheme, which has no parameter that makes an item repeat
+        # (OFF-URL lists every add/add-project/json parameter; none sets a repeat rule). None of them can be a
+        # repeating template, so the repeating guard skips them. Only the selftest passes this, as its live
+        # `created` set; the CLI and the MCP server never do (test_safety_static checks that).
+        self._created_here = created_here
 
     def today(self) -> date:
         return self._today()
@@ -1258,7 +1264,7 @@ class ThingsService:
         wanted = {it.id: per_item.get(it.id, fields) & GUARD_FIELDS for it in items}
         if ctx.offline or not any(wanted.values()):
             return
-        open_items = [it for it in items if it.status == "open" and wanted[it.id]]
+        open_items = [it for it in items if it.status == "open" and wanted[it.id] and it.id not in self._created_here]
         if not open_items:
             return
         frame = self.runner.run_template("MEMBERSHIP", list(GUARD_LISTS))

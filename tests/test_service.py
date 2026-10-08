@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from fakes import FAKE_TOKEN, FakeRunner, FakeThings
+from things_bridge import applescript
 from things_bridge import service as service_mod
 from things_bridge import urlscheme as u
 from things_bridge.errors import (Ambiguous, AutomationDenied, DispatchFailed, InvalidInput, NotFound, NotMacOS,
@@ -1576,8 +1577,7 @@ def test_guard_passes_children_of_a_dormant_project(svc, r, t, when):
 def test_guard_refuses_a_project_no_list_shows_and_says_why(svc, r, t):
     """Things 3.24.1: `to dos of list "Anytime"` omits projects and `projects of list` fails, so an Anytime project
     can't be told apart from a repeating one. OFF-URL forbids these fields on repeating projects: refuse."""
-    t.list_todos_include_projects = False
-    t.list_projects_fail = True
+    t.model_things_3_24_1()
     p = t.seed_project("Kitchen", when="anytime")
     for call in (lambda: svc.set_status([p], "completed"), lambda: svc.set_status([p], "canceled"),
                  lambda: svc.schedule([p], deadline="2026-12-01")):
@@ -1585,6 +1585,75 @@ def test_guard_refuses_a_project_no_list_shows_and_says_why(svc, r, t):
             call()
         assert e.value.message == REPEATING_REFUSAL and "projects in Anytime" in e.value.hint
     nothing_sent(r, t)
+
+
+def test_created_here_skips_the_guard_for_those_ids_only(r, t, clock):
+    """The URL scheme can't make an item repeat (OFF-URL), so ids the process created through it are exempt; every
+    other hidden item, including a real repeating template, is still refused."""
+    t.model_things_3_24_1()
+    mine = t.seed_project("Selftest project", when="anytime")
+    mine_child = t.seed_todo("Someday child", project=mine, when="someday")
+    users = t.seed_project("User's Anytime project", when="anytime")
+    tmpl = t.seed_todo("Water plants", repeating=True)
+    svc = ThingsService(r, Config(), today=clock.today, created_here={mine, mine_child})
+
+    # mixed batches while the exempt items are still open: refused as a whole, naming only the non-exempt id
+    for call, offender in ((lambda: svc.set_status([mine_child, users], "canceled"), users),
+                           (lambda: svc.schedule([mine, tmpl], when="today"), tmpl),
+                           (lambda: svc.schedule([mine, users], deadline="2026-12-01"), users)):
+        with pytest.raises(Refused) as e:
+            call()
+        assert e.value.message == REPEATING_REFUSAL and e.value.details["ids"] == [offender]
+    nothing_sent(r, t)
+
+    # the exempt ids alone go through
+    assert svc.set_status([mine_child], "canceled").sent is True
+    assert svc.update_project(mine, ProjectPatch(when="2026-12-01")).sent is True
+    assert svc.set_status([mine], "completed").sent is True
+    sent = len(r.dispatch_calls)
+    for call in (lambda: svc.set_status([users], "completed"), lambda: svc.set_status([tmpl], "completed"),
+                 lambda: svc.schedule([tmpl], when="today")):
+        with pytest.raises(Refused) as e:
+            call()
+        assert e.value.message == REPEATING_REFUSAL
+    assert len(r.dispatch_calls) == sent and t.crashes == 0
+    assert ThingsService(r, Config(), today=clock.today)._created_here == frozenset()
+
+
+def test_created_here_does_not_extend_to_children_of_an_exempt_project(r, t, clock):
+    """Exempting a project says nothing about items inside it that the process didn't create."""
+    t.model_things_3_24_1()
+    p = t.seed_project("Selftest project", when="anytime")
+    tmpl = t.seed_todo("Template inside", project=p, repeating=True)
+    later = t.seed_todo("User's Someday to-do inside", project=p, when="someday")
+    with_p = ThingsService(r, Config(), today=clock.today, created_here={p})
+    without = ThingsService(r, Config(), today=clock.today)
+    for svc in (with_p, without):
+        for call in (lambda s=svc: s.schedule([tmpl], when="today"), lambda s=svc: s.set_status([tmpl], "completed"),
+                     lambda s=svc: s.schedule([later], when="today"), lambda s=svc: s.set_status([later], "canceled")):
+            with pytest.raises(Refused) as e:
+                call()
+            assert e.value.message == REPEATING_REFUSAL
+    nothing_sent(r, t)
+    assert t.crashes == 0
+
+
+def test_things_3_24_1_model_hides_anytime_projects_and_someday_children(t, svc, r):
+    """The fake's 3.24.1 reading: an Anytime project is in no list read, nor is a Someday to-do inside a project;
+    a loose Someday to-do and a Someday project still show in Someday."""
+    t.model_things_3_24_1()
+    p = t.seed_project("Kitchen", when="anytime")
+    sp = t.seed_project("Someday project", when="someday")
+    child = t.seed_todo("Paint later", project=p, when="someday")
+    loose = t.seed_todo("Learn watercolor", when="someday")
+    frame = r.run_template("MEMBERSHIP", list(service_mod.GUARD_LISTS))
+    members = {k: set(v) for k, v in applescript.membership_from_frame(frame).items()}
+    assert not any(p in m for m in members.values())
+    assert not any(child in m for m in members.values())
+    assert loose in members["someday"] and sp in members["someday"]
+    with pytest.raises(Refused) as e:
+        svc.set_status([child], "completed")
+    assert "leaves a project's Someday to-dos out of every list read" in e.value.hint
 
 
 def test_guard_still_refuses_hidden_items_in_an_active_project(svc, r, t):

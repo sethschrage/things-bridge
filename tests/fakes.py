@@ -191,6 +191,8 @@ class FakeThings:
         self.log_immediately = True              # Q24: completed items leave their lists at once
         self.list_todos_include_projects = True  # R-ASR §3: `to dos of list` returns projects too
         self.list_projects_fail = False          # Things 3.24.1: `projects of list` fails with -1728
+        self.anytime_lists_projects = True       # Things 3.24.1: `to dos of list "Anytime"` omits projects
+        self.someday_lists_project_todos = True  # Things 3.24.1: Someday omits to-dos that are in a project
         self.app_todos_include_projects = False  # Q4
         self.todo_id_resolves_projects = True    # Q23
         self.project_complete_mode = "ignore"    # Q12: "ignore" (OFF-URL) or "cascade" (TAPI §3)
@@ -941,9 +943,20 @@ class FakeThings:
             raise OsaError(-1728, f"Things3 got an error: Can’t get list id \"{LIST_IDS[canonical]}\".")
         return canonical
 
+    def model_things_3_24_1(self) -> None:
+        """List reads as observed on Things 3.24.1 (macOS 26.6): projects show in Today's and Someday's `to dos`
+        but not Anytime's, a project's Someday to-dos show in no list, and `projects of list` fails (-1728)."""
+        self.version = "3.24.1"
+        self.list_todos_include_projects = True
+        self.anytime_lists_projects = False
+        self.someday_lists_project_todos = False
+        self.list_projects_fail = True
+
     def _list_todos(self, key: str) -> list[dict]:
         key = self._list_key(key)
         kinds = ("to-do", "project") if self.list_todos_include_projects else ("to-do",)
+        if key == "anytime" and not self.anytime_lists_projects:
+            kinds = ("to-do",)
         return self._order(key, [it for it in self.items.values() if it["kind"] in kinds and self._in_list(it, key)])
 
     def _list_projects(self, key: str) -> list[dict]:
@@ -980,7 +993,8 @@ class FakeThings:
         if key == "upcoming":
             return start_day is not None and start_day > today
         if key == "someday":
-            return start == "someday"
+            in_project = it["kind"] == "to-do" and bool(it["project"])
+            return start == "someday" and (self.someday_lists_project_todos or not in_project)
         if key == "tomorrow":
             return start_day == today + timedelta(days=1)
         raise AssertionError(key)

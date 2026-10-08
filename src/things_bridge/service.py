@@ -46,7 +46,8 @@ ROWS_CHUNK = 200                                         # ROWS takes at most 20
 GUARD_FIELDS = frozenset({"when", "deadline", "completed", "canceled"})
 GUARD_LISTS = ("inbox", "today", "anytime", "someday", "upcoming")
 # SCAN errors the item-by-item slow path can't fix (environment, dialog, dictionary)
-_NO_SLOW_PATH = frozenset({-609, -1719, -128, -2740, -2741, -1708, -10814})
+# -1708 is not here: Things can reject a form the bulk fast path uses while the item-by-item path still works.
+_NO_SLOW_PATH = frozenset({-609, -1719, -128, -2740, -2741, -10814})
 # Off macOS nothing can be looked up, and ID_RE also matches one-word titles ("Groceries"). Only values shaped like
 # real Things ids (21/22-char base62, or a UUID) count as ids there; anything else may be a title (§5.5).
 _OFFLINE_ID_RE = re.compile(r"^(?:[A-Za-z0-9]{20,24}|[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})$")

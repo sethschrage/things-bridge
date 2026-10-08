@@ -217,6 +217,13 @@ def map_osa_error(code: int | None, stderr: str, *, running: bool | None,
     if code == -1719:
         return ReadFailed("Things returned an empty list; a dialog may be open in Things.",
                           hint="Close any dialog or sheet in the Things window and retry.", details=details)
+    if code == -1708:
+        # errAEEventNotHandled: Things compiled the script but rejected a term or a form in it. The message
+        # carries Things' own text so a template bug can't hide behind "dictionary unavailable".
+        return ReadFailed(f"Things didn't understand part of a read script (-1708): "
+                          f"{_excerpt(redact(stderr)) or 'no error message'}",
+                          hint="Things may be out of date, or this Things version rejects a term things-bridge uses.",
+                          details=details)
     if code in DICTIONARY_CODES:
         return ReadFailed("Things' scripting dictionary is unavailable (is Things 3 installed and up to date?).",
                           details=details)

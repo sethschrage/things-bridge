@@ -51,6 +51,10 @@ BLOCK_KINDS = ("tell", "if", "repeat", "try", "timeout", "considering", "ignorin
 # Rule 5.
 ARGV_OK = re.compile(r"\bmy\s+tb_arg\(argv,\s*(?:[0-9]+|[A-Za-z]\w*)\)|\bcount\s+of\s+argv\b")
 
+# Rule 6: `repeat with x in {v_a, v_b}` over a literal list of variables. When those are lists, `contents of x`
+# is "contents of item 1 of {{…}}", which Things rejects with -1708 (seen on Things 3.24.1 / macOS 26).
+REPEAT_LITERAL = re.compile(r"\brepeat\s+with\s+\w+\s+in\s+\{[^}]*\b[vg]_\w+", re.I)
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -206,6 +210,10 @@ def lint(source: str, *, template: bool) -> list[Violation]:
         rest = "" if s == "on run argv" else ARGV_OK.sub("", s)
         if re.search(r"\bargv\b", rest, re.I):
             bad(ln, "argv", "argv read other than through `my tb_arg(argv, n)` / `count of argv`")
+
+        # 6. no repeat over a literal list of variables (nested lists break `contents of`, -1708)
+        if REPEAT_LITERAL.search(s):
+            bad(ln, "repeat", "repeat over a literal list of variables; iterate a named list or test each variable")
 
     for kind, name in stack:
         bad(0, "structure", f"unclosed {kind} {name or ''}".rstrip())
@@ -377,6 +385,8 @@ def test_shortest_set_target_for_to_do():
     run_wrap("considering case", "set v_same to (v_a is v_b)", "end considering"),
     run_wrap("try", "set v_x to 1", "on error v_msg number v_num", "set v_x to 2", "end try"),
     run_wrap("set v_d to current date", "set v_g to (time to GMT) as text"),
+    run_wrap('repeat with v_try in {"to-do", "project", "area"}', "set v_t to contents of v_try", "end repeat"),
+    run_wrap("if (count of v_names) is not v_n or (count of v_tags) is not v_n then error \"x\" number 9101"),
 ])
 def test_good_snippets_pass(source):
     assert lint(source, template=True) == []
@@ -409,6 +419,8 @@ def test_date_parts_only_in_tb_parse_day():
     (run_wrap("set time of v_d to 0"), {"set"}),
     (run_wrap("set v_x"), {"set"}),
     (run_wrap("set {v_a, v_b} to {1, 2}"), {"set"}),
+    (run_wrap("repeat with v_col in {v_names, v_tags}", "set v_n to count of (contents of v_col)", "end repeat"),
+     {"repeat"}),
 ])
 def test_bad_snippets_are_flagged(source, expected):
     assert rules(source) == expected
@@ -549,3 +561,10 @@ def test_linter_rejects_a_mutated_template():
     assert rules(body.replace("my tb_arg(argv, i)", "item i of argv")) == {"argv"}
     assert rules(body.replace("\t\tend tell\n\t\tif v_kind", "\t\tif v_kind", 1)) == {"structure"}
     assert "application" in rules(body.replace(THINGS, "com.apple.finder", 1))
+
+
+def test_row_kind_does_not_come_from_class_of():
+    """On Things 3.24.1 a project fetched with `to do id` has class `selected to do`, so `class of … is project`
+    called every project a to-do (ST-1 then couldn't find its own project). tb_rowFor asks `exists project id`."""
+    assert re.search(r"\(class of v_ref\) is project", LIBRARY) is None
+    assert "if (exists project id v_id) then set v_kind to \"project\"" in LIBRARY

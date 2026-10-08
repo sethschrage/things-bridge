@@ -233,7 +233,9 @@ def test_reads_off_macos_raise_not_macos(t, clock):
 
 @pytest.mark.parametrize("exc", [ProtocolError("SCAN: truncated or malformed output"),
                                  ReadFailed("Things changed while reading; retry.", details={"osa_code": 9101}),
-                                 ReadFailed("odd", details={"osa_code": -1700})])
+                                 ReadFailed("odd", details={"osa_code": -1700}),
+                                 ReadFailed("Things didn't understand part of a read script (-1708): x",
+                                            details={"osa_code": -1708})])
 def test_scan_falls_back_to_the_slow_path(svc, r, w, exc):
     r.inject("SCAN", exc=exc)
     assert titles(svc.list_items("today")) == ["Buy milk", "Collect dry cleaning"]

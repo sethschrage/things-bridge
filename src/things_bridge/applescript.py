@@ -165,9 +165,9 @@ end tb_containerIds
 on tb_rowFor(v_ref, v_wantNotes)
 	tell application id "com.culturedcode.ThingsMac"
 		set v_p to properties of v_ref
-		set v_kind to "to-do"
-		if (class of v_ref) is project then set v_kind to "project"
 		set v_id to id of v_p
+		set v_kind to "to-do"
+		if (exists project id v_id) then set v_kind to "project"
 		set v_name to name of v_p
 		set v_status to status of v_p
 		set v_tagNames to tag names of v_p
@@ -288,9 +288,7 @@ on run argv
 			end timeout
 		end tell
 		set v_n to count of v_ids
-		repeat with v_col in {v_names, v_status, v_tags, v_due}
-			if (count of (contents of v_col)) is not v_n then error "column length mismatch" number 9101
-		end repeat
+		if (count of v_names) is not v_n or (count of v_status) is not v_n or (count of v_tags) is not v_n or (count of v_due) is not v_n then error "column length mismatch" number 9101
 		if v_wantNotes and ((count of v_notes) is not v_n) then error "column length mismatch" number 9101
 		repeat with i from 1 to v_n
 			set v_note to ""

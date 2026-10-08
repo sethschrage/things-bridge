@@ -473,6 +473,17 @@ def test_dictionary_unavailable_but_app_present(mr, proc):
     assert probe.kw["input"] == applescript.script_source("APP_VERSION").encode()
 
 
+def test_event_not_handled_shows_things_message(mr, proc):
+    """-1708 is Things rejecting a term or a form in a script, not a missing dictionary (the SCAN column check
+    once failed this way on Things 3.24.1); the message must carry Things' own text so it can be diagnosed."""
+    proc.queues[OSASCRIPT] = [osa_err("-1708"), done(0, tb1("app_version.bin"))]
+    with pytest.raises(ReadFailed) as e:
+        mr.run_template("SCAN", ["list", "today", "0", "0"])
+    assert e.value.details["osa_code"] == -1708
+    assert "didn't understand part of a read script (-1708)" in e.value.message
+    assert "count" in e.value.message and "dictionary is unavailable" not in e.value.message
+
+
 @pytest.mark.parametrize("second", [osa_err("-1728"), done(0, b"garbage"), times_out])
 def test_dictionary_unavailable_and_no_app_version(mr, proc, second):
     proc.queues[OSASCRIPT] = [osa_err("-2741"), second]

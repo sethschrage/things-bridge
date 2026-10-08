@@ -175,6 +175,7 @@
 3. **Tell targets.** Every `tell application …` must be exactly `tell application id "com.culturedcode.ThingsMac"`. No other application appears, except in the `running of application id "com.culturedcode.ThingsMac"` and `version of application id "com.culturedcode.ThingsMac"` expressions.
 4. **Structure.** `tell`, `if`, `repeat`, `try`, `with timeout`, `considering`, `ignoring` and handler blocks must be balanced.
 5. **`on run argv`.** Every template has exactly one, and reads arguments only through `my tb_arg(argv, n)`. The one exception is `APP_VERSION`, which takes no arguments.
+6. **No `repeat with x in {v_a, v_b, …}`** over a literal list of variables. When those variables hold lists, `contents of x` becomes `contents of item 1 of {{…}}`, which Things rejects with −1708 (observed on Things 3.24.1, macOS 26: every `SCAN` fast-path read failed). Iterate a named list, or test each variable explicitly.
 
 `tests/test_safety_static.py` walks `src/things_bridge/**/*.py`.
 
@@ -1195,9 +1196,9 @@ end tb_containerIds
 on tb_rowFor(v_ref, v_wantNotes)
 	tell application id "com.culturedcode.ThingsMac"
 		set v_p to properties of v_ref
-		set v_kind to "to-do"
-		if (class of v_ref) is project then set v_kind to "project"
 		set v_id to id of v_p
+		set v_kind to "to-do"
+		if (exists project id v_id) then set v_kind to "project"
 		set v_name to name of v_p
 		set v_status to status of v_p
 		set v_tagNames to tag names of v_p
@@ -1326,9 +1327,7 @@ on run argv
 			end timeout
 		end tell
 		set v_n to count of v_ids
-		repeat with v_col in {v_names, v_status, v_tags, v_due}
-			if (count of (contents of v_col)) is not v_n then error "column length mismatch" number 9101
-		end repeat
+		if (count of v_names) is not v_n or (count of v_status) is not v_n or (count of v_tags) is not v_n or (count of v_due) is not v_n then error "column length mismatch" number 9101
 		if v_wantNotes and ((count of v_notes) is not v_n) then error "column length mismatch" number 9101
 		repeat with i from 1 to v_n
 			set v_note to ""
@@ -1343,7 +1342,7 @@ end run
 
 **`ROWS`** (argv: `wantNotes`, `id1`, `id2`, …; 1..200 ids; timeout 60 s).
 * Status: `to do id`, `project id` and `area id` resolution is CONFIRMED (R-ASR §2).
-* Whether `to do id <projectId>` resolves a project is UNCERTAIN. Either way, `class of` yields the right kind, and the project form is tried next.
+* `to do id <projectId>` does resolve a project (CONFIRMED, Things 3.24.1), but `class of` that reference is `selected to do`, not `project`, so the kind can't come from `class of`. `tb_rowFor` asks `exists project id <id>` instead: true for a project, false for a to-do (CONFIRMED, Things 3.24.1). The project form is still tried next for ids the to-do form rejects.
 
 ```applescript
 on run argv
@@ -1838,7 +1837,8 @@ The codes are CONFIRMED from Apple SDK headers and the ASLR error table (R-MEX �
 | −10004 | `SandboxBlocked` | as above |
 | −1728 / −1719 on a by-id path | `NotFound` | "No item with id X (wrong id, or it was deleted)." |
 | −1719 on a top-level collection | `ReadFailed` | "Things returned an empty list; a dialog may be open in Things." (MODALX1) |
-| −2740 / −2741 / −1708 | `ReadFailed` (+ `ThingsNotInstalled` if `APP_VERSION` also fails) | "Things' scripting dictionary is unavailable (is Things 3 installed and up to date?)." |
+| −2740 / −2741 | `ReadFailed` (+ `ThingsNotInstalled` if `APP_VERSION` also fails) | "Things' scripting dictionary is unavailable (is Things 3 installed and up to date?)." |
+| −1708 (`errAEEventNotHandled`) | `ReadFailed` (+ `ThingsNotInstalled` if `APP_VERSION` also fails) | "Things didn't understand part of a read script (-1708): {stderr excerpt}." A `SCAN` fast path that fails this way is retried item by item. |
 | 9101 twice | `ReadFailed` | "Things changed while reading; retry." |
 | `open` rc ≠ 0 with −10814 | `ThingsNotInstalled` | "Things 3 is not installed (no app handles things:// URLs)." |
 | `open` rc ≠ 0 with −10810, `procNotFound` or −600 | `SandboxBlocked` | sandbox message |

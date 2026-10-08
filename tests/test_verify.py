@@ -256,7 +256,8 @@ def test_mapping_title_and_notes():
     ("evening@6:00pm", [("start_date", "eq", "2026-09-28")], ["reminder time", "evening"]),
     ("tomorrow", [("start_date", "eq", "2026-09-29")], []),
     ("2026-10-02@9:30am", [("start_date", "eq", "2026-10-02")], ["reminder time"]),
-    ("someday", [("start_date", "none", None), ("member", "member", "someday")], []),
+    ("someday", [("start_date", "none", None), ("member", "not_member", "anytime"),
+                 ("member", "not_member", "inbox")], []),
     ("anytime", [("start_date", "none", None), ("member", "member", "anytime")], []),
 ])
 def test_mapping_when(when, expected, unverifiable):
@@ -300,6 +301,8 @@ def test_mapping_project_patch_has_no_checklist():
     assert ops(ex) == [("title", "eq", "P"), ("start_date", "none", None), ("member", "member", "someday"),
                        ("tags", "superset", ["A"])]
     assert unv == []
+    ex, _ = mapping(ProjectPatch(when="x"), {"when": "anytime"})
+    assert ops(ex) == [("start_date", "none", None), ("member", "not_member", "someday")]
 
 
 def test_mapping_empty_patch():

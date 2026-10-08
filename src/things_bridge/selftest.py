@@ -498,7 +498,13 @@ class _Selftest:
         bid, gid, g2id = b[0], g[0], self.ids["g2"]
         rows = self._rows([bid, g2id])
         c.expect("beta is in the project", _ref(rows[bid].project) == pid, _ref(rows[bid].project))
-        c.expect("beta is in Someday", bid in self._membership(["someday"]).get("someday", ()), "not in someday")
+        # Things 3.24.1 leaves a project's Someday to-dos out of Someday's list: no start date and in neither
+        # Anytime nor the Inbox is what places beta in Someday.
+        m = self._membership(["inbox", "anytime"])
+        where = [k for k in ("inbox", "anytime") if bid in m.get(k, ())]
+        c.expect("beta is in Someday (no start date; not in Inbox or Anytime)",
+                 rows[bid].start_date is None and not where,
+                 f"start {rows[bid].start_date}, in {', '.join(where) or 'no list'}")
         names = {r.title for r in applescript.scan_rows(self.runner.run_template("SCAN", ["project", gid, "0", "0"]))}
         c.expect("gamma-proj lists g1 and g2", {g1, g2} <= names, f"{len(names & {g1, g2})} of 2")
         if c.failures:

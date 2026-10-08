@@ -767,7 +767,7 @@ class ThingsService:
             unverifiable = self._when_unverifiable(w)
             for it in before:
                 if w:
-                    expects += when_expects(it.id, w, today)[0]
+                    expects += when_expects(it.id, w, today, it.kind)[0]
                 if d:
                     expects.append(deadline_expect(it.id, d, today))
                 if clear_deadline:
@@ -1573,7 +1573,7 @@ class ThingsService:
         if c.notes:
             ex.append(Expect(nid, "notes", "eq", c.notes))
         if c.when:
-            ex += when_expects(nid, c.when, today)[0]
+            ex += when_expects(nid, c.when, today, c.kind)[0]
         if c.deadline:
             ex.append(deadline_expect(nid, c.deadline, today))
         if c.tags:

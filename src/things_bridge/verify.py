@@ -291,14 +291,28 @@ def _evaluate(e: Expect, items: dict[str, Item], members: dict[str, set[str]],
 
 # ---- expectations -------------------------------------------------------------------------------------
 
-def when_expects(id: str, when: str, today: date) -> tuple[list[Expect], list[str]]:
-    """Checks for a canonical ``when`` value (optionally ``@time``), and what can't be checked."""
+def when_expects(id: str, when: str, today: date, kind: ItemKind = "to-do") -> tuple[list[Expect], list[str]]:
+    """Checks for a canonical ``when`` value (optionally ``@time``), and what can't be checked.
+
+    Anytime and Someday have no start date, so the list proves which one it is. Things 3.24.1 leaves projects
+    out of Anytime's ``to dos`` and leaves a project's Someday to-dos out of Someday's, so each kind is checked
+    against the list that does show it: a to-do in Someday is in neither Anytime nor the Inbox, and a project
+    in Anytime is not in Someday.
+    """
     day = when.partition("@")[0].strip().lower()
     unverifiable = ["reminder time"] if "@" in when else []
     if day == "evening":
         unverifiable.append("evening")
-    if day in ("someday", "anytime"):
-        return [Expect(id, "start_date", "none", None), Expect(id, "member", "member", day)], unverifiable
+    none = Expect(id, "start_date", "none", None)
+    if day == "someday" and kind == "project":
+        return [none, Expect(id, "member", "member", "someday")], unverifiable
+    if day == "someday":
+        return [none, Expect(id, "member", "not_member", "anytime"),
+                Expect(id, "member", "not_member", "inbox")], unverifiable
+    if day == "anytime" and kind == "project":
+        return [none, Expect(id, "member", "not_member", "someday")], unverifiable
+    if day == "anytime":
+        return [none, Expect(id, "member", "member", "anytime")], unverifiable
     return [Expect(id, "start_date", "eq", urlscheme.resolve_day(when, today=today))], unverifiable
 
 
@@ -332,7 +346,7 @@ def expectations_for_todo_patch(id: str, patch: TodoPatch | ProjectPatch, resolv
         ex.append(Expect(id, "notes", "endswith", _norm(patch.append_notes)))
     when = pick("when")
     if when is not None:
-        more, unv = when_expects(id, when, today)
+        more, unv = when_expects(id, when, today, "project" if isinstance(patch, ProjectPatch) else "to-do")
         ex += more
         unverifiable += unv
     if patch.clear_deadline:

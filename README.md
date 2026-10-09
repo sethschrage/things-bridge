@@ -6,7 +6,8 @@ as safe**: it writes through the Things URL scheme and reads through read-only A
 Things database, and it never deletes anything.
 
 * **CLI:** `things-bridge today`, `things-bridge add "Buy milk" --when today`, `things-bridge complete ID`, and so on.
-* **MCP server:** 22 tools for Claude Code, Claude Desktop, or any MCP client (`things-bridge mcp`).
+* **MCP server:** 22 tools for Claude Code, Claude Desktop, or any MCP client (`things-bridge mcp`), plus a
+  Claude Desktop extension that installs it as a connector.
 * **Verified writes:** Things doesn't report back to URL commands, so after every change things-bridge reads Things
   again and tells you whether the change landed (`verified: true/false`).
 
@@ -142,16 +143,38 @@ asks for it.
 
 ## Use with Claude
 
-Use the **absolute path** of the installed binary; replace `/Users/YOU` with your home directory.
+**Claude Desktop: install the extension.** things-bridge comes as a Claude Desktop extension (`.mcpb`). It shows up
+in **Settings → Extensions** like any other connector, with a switch for read-only mode, and it survives anything
+that rewrites `claude_desktop_config.json`. The extension holds no code of its own: it runs
+`~/.local/bin/things-bridge mcp`, the program you [installed](#install). Upgrade it with
+`uv tool upgrade things-bridge`, and keep the token in the Keychain ([Setup](#setup) step 2). The extension never
+asks for the token.
 
-**Claude Code:**
+1. Build it from a clone of this repository. You need Node.js for `npx`:
+
+   ```bash
+   ./scripts/build-mcpb.sh
+   ```
+
+   This validates `mcpb/manifest.json` and writes `dist/things-bridge.mcpb`.
+2. Double-click `dist/things-bridge.mcpb`, or open **Settings → Extensions → Advanced settings** in Claude Desktop
+   and choose **Install Extension…**. Click **Install**.
+3. Optional: turn on **Read-only mode** in the extension's settings. Claude can then read Things and open items in
+   it, but can't change anything.
+4. The first time Claude reads Things, macOS asks whether **Claude** may control **Things**. Click **OK**. This is
+   Claude Desktop's own permission, separate from your terminal's.
+
+If `things-bridge` isn't in `~/.local/bin`, change `command` in `mcpb/manifest.json` and build again. Don't also
+add things-bridge to `claude_desktop_config.json`, or Claude Desktop runs two copies.
+
+**Claude Code:** use the **absolute path** of the installed binary; replace `/Users/YOU` with your home directory.
 
 ```bash
 claude mcp add things -s user -- /Users/YOU/.local/bin/things-bridge mcp
 ```
 
-**Claude Desktop:** edit `~/Library/Application Support/Claude/claude_desktop_config.json`, then quit Claude
-completely and reopen it:
+**Claude Desktop without the extension:** edit `~/Library/Application Support/Claude/claude_desktop_config.json`,
+then quit Claude completely and reopen it:
 
 ```json
 {
@@ -327,6 +350,8 @@ The tests run on macOS and Linux, including CI. Nothing spawns `osascript` or `o
 * `tests/test_safety_static.py` and `tests/test_templates_lint.py` enforce the safety rules on the source itself:
   no database access, no deletion, no AppleScript mutation, no shell, the import allowlist, and where the binaries
   and the token may appear.
+* `tests/test_mcpb_manifest.py` keeps the Claude Desktop extension in step with the server: the same version and
+  tools, the installed CLI as its command, and no token or other secret in the manifest.
 
 Please keep those rules when you contribute. [docs/DESIGN.md](docs/DESIGN.md) §1 lists them, and §6 lists the
 behaviours that still need confirming on a real Mac.

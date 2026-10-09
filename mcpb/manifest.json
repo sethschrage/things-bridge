@@ -1,0 +1,148 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "things-bridge",
+  "display_name": "Things Bridge",
+  "version": "0.1.0",
+  "description": "Let Claude read and manage your Things 3 to-dos, using only the methods Cultured Code documents as safe. Never deletes anything.",
+  "long_description": "Connects Claude to [Things 3](https://culturedcode.com/things/) on this Mac through the **things-bridge** command-line tool. It uses only the methods Cultured Code documents as safe for third-party AI tools: it reads with read-only AppleScript and writes with the Things URL scheme. It never opens the Things database, and it never deletes anything.\n\n**Before you install**\n- Install things-bridge with `uv tool install git+https://github.com/sethschrage/things-bridge`. This extension runs `~/.local/bin/things-bridge mcp`; it contains no code of its own, so `uv tool upgrade things-bridge` updates it.\n- To let Claude change existing to-dos, store your Things auth token in your login Keychain: run `things-bridge token set` in Terminal. The extension never asks for the token and never stores it. Adding new to-dos works without it.\n- The first time Claude reads Things, macOS asks whether Claude may control Things. Click **OK**.\n\n**What Claude can do**\n- Read Inbox, Today, Anytime, Upcoming, Someday and the Logbook; search; list projects, areas and tags; find items by tag, project, area or deadline\n- Add to-dos and projects; change titles, notes, dates, tags and checklists (append or prepend); complete, cancel or reopen; schedule; move; open items in Things\n\n**Guardrails**\n- Nothing is ever deleted. Cancel is the reversible alternative, or Claude opens the item in Things so you can delete it yourself.\n- Every change is read back from Things and reported as verified or not. Nothing is retried automatically.\n- Batches of more than 10 items need an explicit confirmation.\n- The schedule, deadline and status of repeating to-dos are never changed.\n- *Read-only mode* registers only the tools that read Things and open items in it.\n\n**Privacy**: things-bridge runs on your Mac and has no servers of its own. What Claude reads from Things (titles, notes, tags, dates) becomes part of your conversation and is processed by Anthropic like anything else you share with Claude.\n\nthings-bridge is an independent project and is not affiliated with or endorsed by Cultured Code.",
+  "author": {
+    "name": "Seth Schrage",
+    "url": "https://github.com/sethschrage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sethschrage/things-bridge"
+  },
+  "homepage": "https://github.com/sethschrage/things-bridge",
+  "documentation": "https://github.com/sethschrage/things-bridge#use-with-claude",
+  "support": "https://github.com/sethschrage/things-bridge/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "${HOME}/.local/bin/things-bridge",
+    "mcp_config": {
+      "command": "${HOME}/.local/bin/things-bridge",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "THINGS_BRIDGE_READ_ONLY": "${user_config.read_only}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "things_list",
+      "description": "To-dos and projects in Inbox, Today, Anytime, Upcoming or Someday"
+    },
+    {
+      "name": "things_logbook",
+      "description": "Recently completed and canceled to-dos and projects"
+    },
+    {
+      "name": "things_get",
+      "description": "One to-do, project or area with full notes, optionally with its children"
+    },
+    {
+      "name": "things_projects",
+      "description": "List projects, optionally only those in one area"
+    },
+    {
+      "name": "things_areas",
+      "description": "List areas"
+    },
+    {
+      "name": "things_tags",
+      "description": "List tags"
+    },
+    {
+      "name": "things_search",
+      "description": "Search titles and notes, optionally including the recent Logbook"
+    },
+    {
+      "name": "things_find",
+      "description": "Find to-dos and projects by tags, project or area"
+    },
+    {
+      "name": "things_deadlines",
+      "description": "Open items with a deadline, soonest (overdue) first"
+    },
+    {
+      "name": "things_doctor",
+      "description": "Check the setup, read-only; can bring up the macOS permission dialog"
+    },
+    {
+      "name": "things_add_todo",
+      "description": "Add a to-do"
+    },
+    {
+      "name": "things_add_todos",
+      "description": "Add several to-dos at once"
+    },
+    {
+      "name": "things_add_project",
+      "description": "Add a project, optionally with to-dos and headings"
+    },
+    {
+      "name": "things_update_todo",
+      "description": "Change a to-do's title, notes, dates, tags, checklist (append or prepend) or container"
+    },
+    {
+      "name": "things_update_project",
+      "description": "Change a project's title, notes, dates, tags or area"
+    },
+    {
+      "name": "things_set_status",
+      "description": "Complete, cancel or reopen to-dos and projects (all reversible)"
+    },
+    {
+      "name": "things_schedule",
+      "description": "Set when (with an optional reminder) and deadline, or clear the deadline"
+    },
+    {
+      "name": "things_move",
+      "description": "Move to-dos into a project or area, or projects into an area"
+    },
+    {
+      "name": "things_tag",
+      "description": "Add or replace tags (existing tags only)"
+    },
+    {
+      "name": "things_json",
+      "description": "Send a Things JSON command (projects and areas by id only)"
+    },
+    {
+      "name": "things_show",
+      "description": "Open an item, list, area, project or tag in the Things window"
+    },
+    {
+      "name": "things_open_search",
+      "description": "Open Things' own search window"
+    }
+  ],
+  "tools_generated": false,
+  "keywords": [
+    "things",
+    "things 3",
+    "to-do",
+    "tasks",
+    "productivity",
+    "macos"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin"
+    ]
+  },
+  "user_config": {
+    "read_only": {
+      "type": "boolean",
+      "title": "Read-only mode",
+      "description": "Register only the tools that read Things and open items in it: Claude can't add or change anything. Same as `things-bridge mcp --read-only`.",
+      "required": false,
+      "default": false
+    }
+  }
+}
